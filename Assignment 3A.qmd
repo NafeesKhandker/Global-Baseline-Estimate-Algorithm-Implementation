@@ -1,0 +1,144 @@
+---
+title: "Assignment 3A"
+author: "Khandker Qaiduzzaman"
+format: html
+editor: visual
+---
+
+# Objective
+
+Implement a Global Baseline Estimate (GBE) recommendation system in R using the movie-rating data of Assignment 2A.
+
+# Approach
+
+### Dataset description
+
+For this assignment, I need the following columns of the movie-rating dataset:
+
+-   Name: Name of the participants
+
+-   Superman: Collected rating of Spiderman (2025)
+
+-   F1 The Movie: Collected rating of F1: The Movie (2025)
+
+-   Mission Impossible: Collected rating of Mission Impossible
+
+-   The final Reckoning (2025)
+
+-   Jurassic World Rebirth: Collected rating of Jurassic World: Rebirth (202)
+
+-   Sinners: Collected rating of Sinners (2025)
+
+-   Zootopia 2: Rating of Zootopia 2 (2025)
+
+There are some missing values in this dataset. The objective is to use GBE to fill in the missing values i.e. recommend a movie rating to a participant who did not watch it.
+
+### Anticipated Challenges
+
+The dataset here is straight forward. The main challenges is to implement the algorithm properly using R. Calculating the missing rating using the GBE formula and fill in the missing rating needs to be error-free.
+
+The dataset can be viewed here: <https://raw.githubusercontent.com/NafeesKhandker/Global-Baseline-Estimate-Algorithm-Implementation/refs/heads/main/Movie%20Rating%20-%20Baseline%20Estimate.csv>
+
+### Implementation of Global Baseline Estimate Algorithm
+
+I am using read_csv() function to read the csv file from my github repository and saving the data to dataframe df. The dataframe print shows the missing values for each movie and each user. The objective of this algorithm is to estimate the null values to recommend an unwatched movie to a participant.
+
+```{r}
+library(tidyverse)
+library(gt)
+
+url <- "https://raw.githubusercontent.com/NafeesKhandker/Global-Baseline-Estimate-Algorithm-Implementation/refs/heads/main/Movie%20Rating%20-%20Baseline%20Estimate.csv"
+
+df <- read_csv(
+  file = url,
+  show_col_types = FALSE,
+  progress = FALSE
+)
+
+df |>
+  gt()
+```
+
+Next, I am adding a new column user_avg that is a row-wise average of movie rating for each user. Also, I am adding another column user_avg_mean_movie that is the user_avg minus the overall mean of user_avg (column-wise) for each participant.
+
+```{r}
+df <- df %>%
+  mutate(user_avg = rowMeans(select(., -Name), na.rm = TRUE)) 
+
+overall_user_avg <- mean(df$user_avg, na.rm = TRUE)
+
+df <- df %>%
+  mutate(user_avg_mean_movie = user_avg - overall_user_avg)
+
+df |>
+  gt()
+```
+
+I am adding a new row movie_avg that calculates the average of each movie. Also, I am adding a new row movie_avg_mean_movie that is the movie_avg minus the overall mean of user_avg for each movie.
+
+```{r}
+movie_avg_values <- df %>%
+  select(-Name, -user_avg, -user_avg_mean_movie) %>%
+  colMeans(na.rm = TRUE)
+
+movie_avg <- data.frame(
+  Name = "movie_avg",
+  t(movie_avg_values),
+  `user_avg` = NA,
+  `user_avg_mean_movie` = NA,
+  check.names = FALSE
+)
+
+df <- bind_rows(df, movie_avg)
+
+
+movie_avg_mean_movie_values <- movie_avg_values - overall_user_avg
+movie_avg_mean_movie <- data.frame(
+  Name = "movie_avg_mean_movie",
+  t(movie_avg_mean_movie_values),
+  user_avg = NA,
+  user_avg_mean_movie = NA,
+  check.names = FALSE
+)
+
+df <- bind_rows(df, movie_avg_mean_movie)
+
+df |>
+  gt()
+```
+
+Finally, I am calculating the Global Baseline Estimate for each null value using the formula- overall_user_avg + user_avg_mean_movie for that user+ movie_avg_mean_movie for that movie.
+
+```{r}
+num_cols <- names(df)[!names(df) %in% c("Name", "user_avg", "user_avg_mean_movie")]
+
+item_bias <- df %>%
+  filter(Name == "movie_avg_mean_movie") %>%
+  select(all_of(num_cols)) %>%
+  unlist() %>%
+  as.numeric()
+
+names(item_bias) <- num_cols
+
+df <- df %>%
+  filter(!Name %in% c("movie_avg", "movie_avg_mean_movie")) %>% 
+  rowwise() %>%
+  mutate(across(all_of(num_cols), ~ ifelse(is.na(.), overall_user_avg + user_avg_mean_movie + item_bias[cur_column()],.))) %>%
+  ungroup()
+
+df <- df %>%
+  select(-user_avg, -user_avg_mean_movie)
+
+df[num_cols] <- round(df[num_cols], 1)
+
+df |>
+  gt()
+```
+
+# Conclusion
+
+Global Baseline Estimator is implemented to create a movie recommender system. The final result shows that GBE suggests a participant e.g. Tabassumul to watch Mission Impossible (4.8) first, then Sinner (4.7), F1 The Movie (4.6), Superman (4.4), and Jurassic World Rebirth (3.7). Though this is not a personalized estimator, it is helpful when we quickly want to build a generalized estimator.
+
+# Reference
+
+-   OpenAI. (2026). ChatGPT (Version 5.2) \[Large language model\]. https://chat.openai.com . Accessed February 14, 2026.
